@@ -103,13 +103,12 @@ We refer to [SAM](https://github.com/facebookresearch/segment-anything), [Uni3D]
 
 ### Citation
 ```
-@misc{zhou2024pointsampromptable3dsegmentation,
-      title={Point-SAM: Promptable 3D Segmentation Model for Point Clouds}, 
-      author={Yuchen Zhou and Jiayuan Gu and Tung Yen Chiang and Fanbo Xiang and Hao Su},
-      year={2024},
-      eprint={2406.17741},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
-      url={https://arxiv.org/abs/2406.17741}, 
+@inproceedings{
+  zhou2025pointsam,
+  title={Point-{SAM}: Promptable 3D Segmentation Model for Point Clouds},
+  author={Yuchen Zhou and Jiayuan Gu and Tung Yen Chiang and Fanbo Xiang and Hao Su},
+  booktitle={The Thirteenth International Conference on Learning Representations},
+  year={2025},
+  url={https://openreview.net/forum?id=yXCTDhZDh6}
 }
 ```
