@@ -117,32 +117,32 @@ class PointCloudEncoder(nn.Module):
 
     def forward(self, coords, features):
         # Group points into patches and get embeddings
-        patches = self.patch_embed(coords, features)
+        patches = self.patch_embed(coords, features)# 将点云按空间邻近关系分成若干“patch”（类似图像的token），并为每个 patch 计算初始嵌入。
         if isinstance(patches, list):
             patch_embed = patches[-1]["embeddings"]
             centers = patches[-1]["centers"]
         else:
             patch_embed = patches["embeddings"]  # [B, L, D]
             centers = patches["centers"]  # [B, L, 3]
-        patch_embed = self.patch_proj(patch_embed)
+        patch_embed = self.patch_proj(patch_embed) # 将初始 patch 嵌入映射到模型的隐藏维度或与后续 Transformer 对齐的维度。
 
         # Positional embedding for patches
         pos_embed = self.pos_embed(centers)
         x = patch_embed + pos_embed
 
         # Dropout patch
-        x = self.patch_dropout(x)
+        x = self.patch_dropout(x)#：对 patch 级token做随机丢弃或扰动，提升泛化。
         # Dropout features
         x = self.transformer.pos_drop(x)
 
         for block in self.transformer.blocks:
-            x = block(x)
+            x = block(x)# 依次通过所有编码块,自注意力与前馈网络
         # In fact, only norm or fc_norm is not identity in those transformers.
         x = self.transformer.norm(x)
         x = self.transformer.fc_norm(x)
         x = self.out_proj(x)
 
-        return x, patches
+        return x, patches #TODO patches里面保存的是什么？
 
 
 class Block(nn.Module):

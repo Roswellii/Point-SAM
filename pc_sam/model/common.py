@@ -474,7 +474,6 @@ def sample_furthest_points_from_border(
     return center_coords[None, ...], center_label[None, ...], center_dist
 
 
-class PatchEncoder(nn.Module):
     """Encode point patches following the PointNet structure for segmentation."""
 
     def __init__(self, in_channels, out_channels, hidden_dims: list[int]):
@@ -485,7 +484,7 @@ class PatchEncoder(nn.Module):
         # NOTE: The original Uni3D implementation uses BatchNorm1d, while we use LayerNorm.
         self.conv1 = nn.Sequential(
             nn.Linear(in_channels, hidden_dims[0]),
-            nn.LayerNorm(hidden_dims[0]),
+            nn.LayerNorm(hidden_dims[0]), # 原版 PointNet 使用的是 BatchNorm1d，而这里改用 LayerNorm，更适合 Transformer 风格的输入
             nn.GELU(),
             nn.Linear(hidden_dims[0], hidden_dims[0]),
         )
@@ -497,12 +496,16 @@ class PatchEncoder(nn.Module):
         )
 
     def forward(self, point_patches: torch.Tensor):
-        # point_patches: [B, L, K, C_in]
-        x = self.conv1(point_patches)
-        y = torch.max(x, dim=-2, keepdim=True).values
-        x = torch.cat([y.expand_as(x), x], dim=-1)
-        x = self.conv2(x)  # [B, L, K, C_out]
-        y = torch.max(x, dim=-2).values  # [B, L, C_out]
+        # point_patches: [B, L, K, C_in][batch size，patch数，patch内点数，每个点输入通道]
+        x = self.conv1(point_patches)#对单个点的特征进行非线性映射
+        y = torch.max(x, dim=-2, keepdim=True).values #在每个 patch 内执行 max pooling，获得 patch 的全局特征
+        #patch内，每个通道上挑出最大的那个点。
+
+        x = torch.cat([y.expand_as(x), x], dim=-1)#把全局特征广播到每个点上，并与点的局部特征拼接
+        x = self.conv2(x)  # [B, L, K, C_out]#第二个 MLP 负责融合局部上下文信息，输出每个点在 patch 内的最终特征表示。
+        y = torch.max(x, dim=-2).values  # [B, L, C_out]#再次通过 max pooling，把每个 patch 聚合成一个特征向量
+        #patch内，每个通道上挑出最大的那个点。
+        
         return y
     
 class PatchEncoderNN(nn.Module):

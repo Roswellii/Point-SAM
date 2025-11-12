@@ -119,7 +119,7 @@ class MaskDecoder(nn.Module):
         pc_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
-        aux_inputs: AuxInputs,
+        aux_inputs: AuxInputs,#传递并缓存几何信息与插值参数
         mask_slice: slice = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
         # Concatenate output tokens
@@ -143,25 +143,26 @@ class MaskDecoder(nn.Module):
         iou_token_out = hs[:, 0, :]
         mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 
-        # Upscale mask embeddings
-        coords = aux_inputs.coords  # [B, N, 3]
-        centers = aux_inputs.centers  # [B, L, 3]
+        # Upscale mask embeddings 为每个点从 patch 级特征插值到点级特征做准备
+        coords = aux_inputs.coords  # [B, N, 3]原始点坐标。
+        centers = aux_inputs.centers  # [B, L, 3]patch 中心坐标
         interp_index = aux_inputs.interp_index  # [B, N, 3]
         interp_weight = aux_inputs.interp_weight  # [B, N, 3]
         if interp_index is None or interp_weight is None:
             with torch.no_grad():
-                interp_index, interp_weight = compute_interp_weights(coords, centers)
+                interp_index, interp_weight = compute_interp_weights(coords, centers) #计算每个点的 3 个最近中心及其基于距离的权重。
             # Update auxilary inputs for the next iteration
             aux_inputs.interp_index = interp_index
             aux_inputs.interp_weight = interp_weight
 
+        #将 interp_index 、 interp_weight 从 [B, N, 3] 扩展为 [B*M, N, 3] ，与当前的 src 、 tokens 批次一致。
         _repeats = tokens.shape[0] // interp_index.shape[0]
-        interp_index = repeat_interleave(interp_index, _repeats, dim=0)
+        interp_index = repeat_interleave(interp_index, _repeats, dim=0)#
         interp_weight = repeat_interleave(interp_weight, _repeats, dim=0)
 
-        # [B*M, N, D]
-        interp_embedding = interpolate_features(src, interp_index, interp_weight)
-        upscaled_embedding = self.output_upscaling(interp_embedding)
+        # 把 [B*M, L, D] 的 patch 级特征线性插值为 [B*M, N, D] 的点级特征
+        interp_embedding = interpolate_features(src, interp_index, interp_weight)#从 src 中取出 3 个 patch 中心的特征，用权重加权求和。
+        upscaled_embedding = self.output_upscaling(interp_embedding) #做逐点的非线性映射与特征增强
 
         # Predict masks using the mask tokens
         hyper_in_list: List[torch.Tensor] = []
@@ -170,7 +171,7 @@ class MaskDecoder(nn.Module):
             mask_indices = mask_indices[mask_slice]
         for i in mask_indices:
             hyper_in_list.append(
-                self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :])
+                self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :])#MLP 把它变换成点特征空间的线性权重向量。
             )
         hyper_in = torch.stack(hyper_in_list, dim=1)  # [B*M, num_mask_tokens, D]
         masks = hyper_in @ upscaled_embedding.transpose(-1, -2)
